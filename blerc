@@ -303,6 +303,19 @@ function ble/my/complete/history-line.advice {
 blehook/eval-after-load complete '
   ble/function#advice -f after ble/complete/context:syntax/generate-sources ble/my/complete/history-line.advice'
 
+# PSReadLine: Enter accepts the highlighted suggestion and runs the line in a
+# single press. ble.sh binds RET in the menu_complete keymap to accept-only (the
+# line is inserted but not executed), so a second Enter is needed to run it.
+# Extend the accept widget itself rather than rebinding RET: the menu keymaps are
+# defined lazily on first use, so a binding made here would be overwritten by
+# ble.sh's own keymap definition.
+function ble/my/complete/accept-line.advice {
+  ble/widget/accept-line
+}
+
+blehook/eval-after-load complete '
+  ble/function#advice -f after ble/widget/menu_complete/accept ble/my/complete/accept-line.advice'
+
 # Render history candidates: the part that matches the typed text is turquoise,
 # the rest is grey. ble.sh escapes ANSI sequences embedded in candidate strings,
 # so build the coloured item here and trace the parts separately.
