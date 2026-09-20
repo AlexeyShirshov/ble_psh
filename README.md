@@ -20,7 +20,7 @@ single `blerc` file and uses public ble.sh APIs (`ble-bind`, `ble-face`,
 ## Install
 
 ```bash
-git clone --recurse-submodules git@github.com:AlexeyShirshov/dotfiles.git ~/sources/dotfiles
+git clone --recurse-submodules https://github.com/AlexeyShirshov/dotfiles.git ~/sources/dotfiles
 ~/sources/dotfiles/install.sh
 exec bash
 ```
