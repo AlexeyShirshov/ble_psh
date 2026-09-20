@@ -1,0 +1,437 @@
+# ~/.blerc — user settings for ble.sh
+
+# ---- predictive history (PSReadLine-like) --------------------------------
+bleopt complete_auto_complete=1
+
+# history only: disable syntax-based intellisense (command/file suggestions)
+bleopt complete_auto_complete_opts=syntax-disabled
+
+# treat a lone ESC as the Esc key (needed to bind Esc to dismiss the list)
+bleopt decode_isolated_esc=esc
+
+# vertical candidate list (one per line, like `ll`), capped like a dropdown
+bleopt complete_menu_style=linewise
+bleopt complete_menu_maxlines=10
+
+# View is remembered between sessions: inline | list
+_ble_prediction_view_file=${XDG_CONFIG_HOME:-$HOME/.config}/blesh/prediction-view
+
+function ble/my/prediction-apply {
+  if [[ $BLE_PREDICTION_VIEW == list ]]; then
+    # only the candidate list, no inline suggestion on the current line
+    bleopt complete_auto_menu=1
+    bleopt complete_auto_complete=
+  else
+    # inline suggestion only; the menu is still available on Tab
+    bleopt complete_auto_menu=0
+    bleopt complete_auto_complete=1
+  fi
+}
+
+function ble/my/prediction-save {
+  local dir=${_ble_prediction_view_file%/*}
+  [[ -d $dir ]] || mkdir -p -- "$dir"
+  printf '%s\n' "$BLE_PREDICTION_VIEW" > "$_ble_prediction_view_file"
+}
+
+function ble/widget/my/prediction-toggle {
+  if [[ $BLE_PREDICTION_VIEW == list ]]; then
+    BLE_PREDICTION_VIEW=inline
+  else
+    BLE_PREDICTION_VIEW=list
+  fi
+
+  ble/my/prediction-apply
+  ble/my/prediction-save
+  ble/complete/menu/clear
+
+  if [[ $BLE_PREDICTION_VIEW == list ]]; then
+    ble/widget/print 'history prediction: ListView'
+    [[ $_ble_edit_str ]] && ble/widget/complete auto_menu:show_menu:no-bell
+  else
+    ble/widget/print 'history prediction: InlineView'
+  fi
+  return 0
+}
+
+# F2 toggles the prediction view, like PSReadLine
+ble-bind -f f2 'my/prediction-toggle'
+
+# Up/Down: move into the prediction list and through it (like PSReadLine).
+# Without an open list they keep the usual history navigation.
+function ble/widget/my/prediction/down {
+  if [[ $_ble_complete_menu_active ]]; then
+    ble/widget/menu-complete
+    return 0
+  fi
+  ble/widget/forward-line history
+}
+
+function ble/widget/my/prediction/up {
+  if [[ $_ble_complete_menu_active ]]; then
+    ble/widget/menu-complete backward
+    return 0
+  fi
+  ble/widget/backward-line history
+}
+
+ble-bind -f down 'my/prediction/down'
+ble-bind -f up 'my/prediction/up'
+
+# Tab runs the usual (syntax/intellisense) completion in place, without opening
+# the vertical candidate list. `context=syntax` keeps ble.sh from reusing the
+# open history menu; the locally hidden menu makes `complete` insert into the
+# current line instead of drawing the list below it. Repeated Tab keeps cycling
+# through the candidates of that same word in place (add -> am -> ...) instead of
+# moving on to complete the next word.
+function ble/widget/my/prediction/tab {
+  if [[ $_ble_complete_menu_active ]]; then
+    if [[ ${_ble_complete_menu0_pack[0]%%:*} == histline ]]; then
+      # the history prediction list is open: switch to the usual completion
+      ble/complete/menu/clear
+    else
+      # a completion menu is somehow still open in the emacs keymap: enter it
+      ble/complete/menu-complete/enter insert_unique:
+      return 0
+    fi
+  fi
+
+  local bleopt_complete_menu_complete_opts=insert-selection:hidden
+  ble/widget/complete context=syntax
+
+  # Enter the (hidden) menu right away: that selects the first candidate and
+  # switches to the menu_complete keymap, where repeated Tab is bound to
+  # `menu/forward cyclic` and just replaces the word with the next candidate.
+  [[ $_ble_complete_menu_active ]] &&
+    ble/complete/menu-complete/enter insert_unique:
+  return 0
+}
+
+ble-bind -m emacs -f C-i 'my/prediction/tab'
+ble-bind -m emacs -f TAB 'my/prediction/tab'
+
+# Deleting (Backspace/Delete) also refreshes the prediction list, which ble.sh
+# otherwise only does after a self-insert.
+function ble/widget/my/prediction/refresh {
+  ble/complete/menu/clear
+  if [[ $BLE_PREDICTION_VIEW == list ]]; then
+    ble/widget/complete auto_menu:show_menu:no-bell
+  else
+    ble/complete/auto-complete.impl
+  fi
+  return 0
+}
+
+function ble/widget/my/prediction/delete-backward {
+  ble/widget/delete-region-or delete-backward-char
+  ble/widget/my/prediction/refresh
+}
+
+function ble/widget/my/prediction/delete-forward {
+  ble/widget/delete-char
+  ble/widget/my/prediction/refresh
+}
+
+ble-bind -m emacs -f backspace 'my/prediction/delete-backward'
+ble-bind -m emacs -f BS 'my/prediction/delete-backward'
+ble-bind -m emacs -f 'C-h' 'my/prediction/delete-backward'
+ble-bind -m emacs -f DEL 'my/prediction/delete-backward'
+ble-bind -m emacs -f 'C-?' 'my/prediction/delete-backward'
+ble-bind -m emacs -f delete 'my/prediction/delete-forward'
+
+# Space is magic-space, which is not in ble.sh's auto-menu whitelist, so the
+# prediction list would close when a space is typed. Re-open/narrow it after the
+# space is inserted so the list keeps only lines starting with "git " (a previous
+# "git-foo" line drops out).
+function ble/widget/my/prediction/space {
+  ble/widget/magic-space; local ext=$?
+  ((ext==147)) && return "$ext"
+  [[ $BLE_PREDICTION_VIEW == list ]] && ble/widget/my/prediction/refresh
+  return "$ext"
+}
+
+ble-bind -m emacs -f SP 'my/prediction/space'
+
+# Typing a character rebuilds the prediction list from the history instead of
+# letting ble.sh only fuzzy-filter the list that is already open. ble.sh's
+# filter falls back to subsequence matching, so e.g. "git co" kept "git clone"
+# (the "o" matches inside "clone") and highlighted the filter word in yellow.
+function ble/widget/my/prediction/self-insert {
+  ble/widget/self-insert
+  local ext=$?
+
+  # Keep ble.sh's auto-complete/auto-menu idle tasks running: they whitelist the
+  # exact widget name "ble/widget/self-insert" (core-complete.sh:6713,6732), which
+  # this wrapper would otherwise hide (the inline suggestion would stop showing).
+  _ble_decode_widget_last=ble/widget/self-insert
+  ((ext)) && return "$ext"
+
+  [[ $BLE_PREDICTION_VIEW == list ]] || return 0
+  ble/widget/my/prediction/refresh
+  _ble_decode_widget_last=ble/widget/self-insert
+  return 0
+}
+
+ble-bind -m emacs -f __defchar__ 'my/prediction/self-insert'
+
+# Esc closes the prediction list (like PSReadLine).
+# (decode_isolated_esc=esc above makes a lone ESC dispatch as the Esc key.)
+function ble/widget/my/prediction/escape {
+  if [[ $_ble_complete_menu_active ]]; then
+    ble/complete/menu/clear
+    return 0
+  fi
+  # like PSReadLine, a bare Esc discards the current line
+  ble/widget/discard-line
+}
+
+ble-bind -m emacs -f 'C-[' 'my/prediction/escape'
+ble-bind -m menu_complete -f 'C-[' 'menu_complete/cancel'
+ble-bind -m menu -f 'C-[' 'menu/cancel'
+
+# restore the remembered view
+BLE_PREDICTION_VIEW=inline
+if [[ -r $_ble_prediction_view_file ]]; then
+  read -r BLE_PREDICTION_VIEW < "$_ble_prediction_view_file"
+fi
+[[ $BLE_PREDICTION_VIEW == list ]] || BLE_PREDICTION_VIEW=inline
+ble/my/prediction-apply
+
+# ---- history lines as menu candidates (ListView) -------------------------
+# ble.sh puts history only into the inline suggestion; add a completion source
+# that yields matching command lines so they show up in the list as well.
+# Like PSReadLine, lines that start with the text typed so far are preferred;
+# only when there are none, lines that merely contain it are shown. The matching
+# part is highlighted in the list (rendered further below). DATA carries the
+# plain line used for insertion, and the action below inserts only the part that
+# is not typed before the completion region.
+function ble/complete/action:histline/initialize {
+  local prefix=${_ble_edit_str:0:_ble_edit_ind-${#COMPS}}
+  if [[ $DATA == "$prefix"* ]]; then
+    INSERT=${DATA:${#prefix}}
+  else
+    INSERT=$DATA
+  fi
+}
+
+function ble/complete/action:histline/complete { return 0; }
+function ble/complete/action:histline/get-desc { desc=; }
+
+# The history is parsed once into a cache (unique, trimmed lines, newest first)
+# so that filtering on every keystroke neither re-reads the history file nor
+# re-trims every line. The cache is rebuilt only when a new command was added
+# (HISTCMD changes), i.e. at most once per submitted command.
+_ble_prediction_hist_cache=()
+_ble_prediction_hist_cache_key=
+
+function ble/my/prediction/load-history {
+  [[ ${_ble_prediction_hist_cache_key:-} == "$HISTCMD" ]] && return 0
+
+  local -a raw=()
+  mapfile -t raw < <(HISTTIMEFORMAT= builtin history 2000 2>/dev/null |
+                       ble/bin/sed -e 's/^ *[0-9][0-9]* *//')
+
+  local -a cache=()
+  local -A seen=()
+  local i line
+  for ((i=${#raw[@]}-1; i>=0; i--)); do
+    ble/string#trim "${raw[i]}"; line=$ret
+    [[ $line ]] || continue
+    [[ ${seen[$line]+set} ]] && continue
+    seen[$line]=1
+    cache[${#cache[@]}]=$line
+  done
+
+  _ble_prediction_hist_cache=("${cache[@]}")
+  _ble_prediction_hist_cache_key=$HISTCMD
+}
+
+function ble/complete/source:history-line {
+  [[ $BLE_PREDICTION_VIEW == list ]] || return 1
+
+  # match on the whole line before the cursor, not just the current word
+  local needle=${_ble_edit_str:0:_ble_edit_ind}
+  [[ $needle ]] || return 1
+
+  ble/my/prediction/load-history
+
+  # a single scan collecting lines that start with the text (preferred) as well
+  # as lines that merely contain it; if there is at least one of the former, the
+  # latter are dropped (PSReadLine-like)
+  local -a pref=() sub=()
+  local i key
+  for ((i=0; i<${#_ble_prediction_hist_cache[@]}; i++)); do
+    key=${_ble_prediction_hist_cache[i]}
+    [[ $key == "$needle" ]] && continue
+    if [[ $key == "$needle"* ]]; then
+      pref[${#pref[@]}]=$key
+      ((${#pref[@]} >= 50)) && break
+    elif ((${#sub[@]} < 50)) && [[ $key == *"$needle"* ]]; then
+      sub[${#sub[@]}]=$key
+    fi
+  done
+
+  local -a out=("${pref[@]}")
+  ((${#out[@]})) || out=("${sub[@]}")
+  ((${#out[@]})) || return 1
+
+  # the list/drawing code colours the matching part and passes the plain line as
+  # DATA for insertion; here just yield the plain line as both candidate & data
+  local action=histline
+  ble/complete/cand/yield.initialize "$action"
+  local cand
+  for cand in "${out[@]}"; do
+    ble/complete/cand/yield "$action" "$cand" "$cand"
+  done
+}
+
+# Replace the auto-popup sources with history lines only (no command/file
+# intellisense). The completion region starts at the current word (or at the
+# beginning of the line right after a space/tab), so the list narrows as more
+# of the line is typed and widens again when characters are deleted.
+function ble/my/complete/history-line.advice {
+  [[ $BLE_PREDICTION_VIEW == list ]] || return 0
+  [[ ${FUNCNAME[*]} == *auto-menu.idle* || ${FUNCNAME[*]} == *my/prediction/refresh* ]] || return 0
+
+  local line=${_ble_edit_str:0:_ble_edit_ind}
+  local tail=${line##*[[:space:]]}
+  local start=0
+  [[ $tail ]] && ((start=_ble_edit_ind-${#tail}))
+  sources=("history-line $start")
+}
+
+blehook/eval-after-load complete '
+  ble/function#advice -f after ble/complete/context:syntax/generate-sources ble/my/complete/history-line.advice'
+
+# Render history candidates: the part that matches the typed text is turquoise,
+# the rest is grey. ble.sh escapes ANSI sequences embedded in candidate strings,
+# so build the coloured item here and trace the parts separately.
+blehook/eval-after-load complete '
+  if ! ble/is-function _ble/my/histline/orig-render-item; then
+    eval "$(declare -f ble/complete/menu-complete.class/render-item |
+      ble/bin/sed "1s|^ble/complete/menu-complete.class/render-item|_ble/my/histline/orig-render-item|")"
+  fi
+
+  function ble/complete/menu-complete.class/render-item {
+    local "${_ble_complete_cand_varnames[@]/%/=}"
+    ble/complete/cand/unpack "$1"
+
+    if [[ $ACTION != histline ]]; then
+      _ble/my/histline/orig-render-item "$@"
+      return "$?"
+    fi
+
+    local cand=$CAND
+    local needle=${_ble_edit_str:0:_ble_edit_ind}
+
+    local gitem garg
+    ble/color/face2g my_histline_item; gitem=$ret
+    ble/color/face2g my_histline_arg;  garg=$ret
+    if [[ :$2: == *:selected:* ]]; then
+      ble/color/face2g menu_complete_selected
+      ble/color/g#append gitem "$ret"
+      ble/color/g#append garg "$ret"
+    fi
+
+    local sgr_item sgr_arg out
+    ble/color/g2sgr "$gitem"; sgr_item=$ret
+    ble/color/g2sgr "$garg";  sgr_arg=$ret
+
+    if [[ $needle && $cand == *"$needle"* ]]; then
+      local pre=${cand%%"$needle"*} post
+      post=${cand#"$pre$needle"}
+      ble/canvas/trace-text "$pre" nonewline; out=$sgr_arg$ret
+      ble/canvas/trace-text "$needle" nonewline; out=$out$sgr_item$ret
+      [[ $post ]] && { ble/canvas/trace-text "$post" nonewline; out=$out$sgr_arg$ret; }
+    else
+      ble/canvas/trace-text "$cand" nonewline; out=$sgr_arg$ret
+    fi
+    ret=$out$_ble_term_sgr0
+    return 0
+  }'
+
+# ---- kill ring: also send the killed/copied text to Windows clipboard ----
+# ble.sh's kill ring is internal: killing or copying text (M-d, C-w, M-w, ...)
+# never reaches the system clipboard, and C-y only yanks from the kill ring.
+# PSReadLine (Windows mode) instead treats the system clipboard as the kill
+# ring, so route every kill/copy through clip.exe (WSL interop) and paste with
+# C-v / Shift+Insert.
+if ! ble/is-function _ble/my/orig-push-kill-ring; then
+  eval "$(declare -f ble-edit/content/push-kill-ring |
+    ble/bin/sed '1s|^ble-edit/content/push-kill-ring|_ble/my/orig-push-kill-ring|')"
+fi
+
+function ble-edit/content/push-kill-ring {
+  if [[ $1 ]] && command -v clip.exe >/dev/null 2>&1; then
+    printf '%s' "$1" | clip.exe
+  fi
+  _ble/my/orig-push-kill-ring "$@"
+}
+
+# WSL: `Get-Clipboard` returns Windows CRLF line endings, and ble would insert
+# the carriage returns verbatim, so strip them. On other systems leave ble.sh's
+# own clipboard detection (xclip/pbpaste/tmux/...) untouched.
+if ble/base/is-wsl; then
+  function ble/edit/get-clipboard {
+    if command -v powershell.exe >/dev/null 2>&1; then
+      ble/util/assign clipboard 'powershell.exe -NoProfile -Command Get-Clipboard 2>/dev/null'
+      clipboard=${clipboard//$'\r'/}
+      return 0
+    fi
+    return 1
+  }
+fi
+
+# PSReadLine-like C-c: with an active selection it copies the selection to the
+# clipboard; otherwise it keeps the default behaviour (discard the line).
+function ble/widget/my/discard-line-or-copy {
+  if [[ $_ble_edit_mark_active ]]; then
+    ble/widget/copy-region
+  else
+    ble/decode/widget/dispatch "$@"
+  fi
+}
+ble-bind -m emacs -f 'C-c' 'my/discard-line-or-copy discard-line'
+
+# ---- PSReadLine (Windows mode) key bindings ------------------------------
+# Align editing keys with PSReadLine's Windows mode: the clipboard acts as the
+# kill ring (Ctrl+V / Shift+Insert paste), Ctrl+Z / Ctrl+Y undo and redo,
+# Ctrl+Space opens the completion menu. Selection still uses Shift+arrows.
+ble-bind -m emacs -f 'C-v'      'paste-from-clipboard'
+ble-bind -m emacs -f 'S-insert' 'paste-from-clipboard'
+ble-bind -m emacs -f 'C-z'      'undo'
+ble-bind -m emacs -f 'C-y'      'redo'
+ble-bind -m emacs -f 'C-SP'     'menu-complete'
+ble-bind -m emacs -f 'C-@'      'menu-complete'
+ble-bind -m emacs -f 'C-home'   'kill-backward-text'
+ble-bind -m emacs -f 'C-end'    'kill-forward-text'
+ble-bind -m emacs -f 'C-BS'     'kill-backward-cword'
+ble-bind -m emacs -f 'C-delete' 'kill-forward-cword'
+
+# ---- colors (PowerShell-like) -------------------------------------------
+# commands on the command line: orange
+ble-face command_builtin='fg=#d18f52'
+ble-face command_builtin_dot='fg=#d18f52,bold'
+ble-face command_alias='fg=#d18f52'
+ble-face command_function='fg=#d18f52'
+ble-face command_keyword='fg=#d18f52'
+ble-face command_file='fg=#d18f52'
+ble-face command_directory='fg=#d18f52,underline'
+ble-face command_jobs='fg=#d18f52,bold'
+ble-face syntax_command='fg=#d18f52'
+
+# history predictions in the list: the part matching the typed text is turquoise,
+# the rest is grey, with a grey selection band
+ble-face auto_complete='fg=#5c6370'
+ble-face -d my_histline_item 'fg=#4cd1e0'
+ble-face -d my_histline_arg 'fg=#abb2bf'
+ble-face menu_complete_selected='bg=#444444'
+
+# the just-inserted completion candidate is marked as an "insert" region and
+# ble.sh paints it with region_insert (fg=27,bg=254 - a near-white background);
+# `none` makes that layer paint nothing, keeping the normal syntax colour
+ble-face region_insert='none'
+
+# ---- fzf integration -----------------------------------------------------
+ble-import -d integration/fzf-completion
+ble-import -d integration/fzf-key-bindings
