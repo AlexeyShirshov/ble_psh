@@ -1,69 +1,56 @@
-# dotfiles (WSL / bash / ble.sh, PSReadLine-like)
+# ble.sh overlay (PSReadLine-like)
 
-Personal shell setup for **Windows Terminal + WSL (Ubuntu) + bash + ble.sh**,
-made to feel like PowerShell's PSReadLine (Windows edit mode): inline and
-list-view history predictions, `F2` to switch views, `Ctrl+C`/`Esc`,
-clipboard-bound kill ring, and PSReadLine key bindings.
+A thin **overlay on [ble.sh](https://github.com/akinomyoga/ble.sh)** that makes
+`Windows Terminal + WSL + bash` feel like PowerShell's PSReadLine (Windows edit
+mode): inline and list-view history predictions, `F2` to switch views, and
+PSReadLine key bindings with a clipboard-bound kill ring.
+
+No file of the ble.sh installation itself is patched — everything lives in a
+single `blerc` file and uses public ble.sh APIs (`ble-bind`, `ble-face`,
+`blehook`, user widgets).
 
 ## Contents
 
-| In repo | Installed as | What it is |
-|---|---|---|
-| `bash/bashrc` | `~/.bashrc` | shell init: loads ble.sh, oh-my-posh, fzf, dotnet/podman completion |
-| `bash/bash_aliases` | `~/.bash_aliases` | aliases/functions ported from a PowerShell profile |
-| `bash/blerc` | `~/.blerc` | **the main part**: all ble.sh customizations |
-| `oh-my-posh/my-capr4n.omp.json` | `~/.config/oh-my-posh/my-capr4n.omp.json` | prompt theme |
-
-Everything is an *overlay* on ble.sh: no file inside the ble.sh installation is
-patched. `~/.blerc` only uses public ble.sh APIs (`ble-bind`, `ble-face`,
-`blehook`, `ble/...` helpers) and user-defined widgets.
+| File | Purpose |
+|---|---|
+| `blerc` | the overlay (installed as `~/.blerc`) |
+| `blesh/` | git submodule: the pinned [ble.sh fork](https://github.com/AlexeyShirshov/ble.sh) |
+| `install.sh` | installs ble.sh from the submodule, wires `~/.bashrc`, links `~/.blerc` |
 
 ## Install
 
 ```bash
-git clone <this repo> ~/dotfiles
-~/dotfiles/install.sh          # symlinks into $HOME, backs up existing files
-exec bash                      # or: source ~/.bashrc
+git clone --recurse-submodules git@github.com:AlexeyShirshov/dotfiles.git ~/sources/dotfiles
+~/sources/dotfiles/install.sh
+exec bash
 ```
+
+`install.sh` fetches the submodule, runs `make install PREFIX=$HOME/.local`
+(→ `~/.local/share/blesh`), appends the two ble.sh lines to `~/.bashrc` if they
+are missing, and symlinks `~/.blerc` (existing file is backed up).
 
 ## Requirements
 
-- **ble.sh 0.4.0-nightly** (the config is written against the nightly API).
-  Install without touching the shell:
-  ```bash
-  git clone --recursive --depth 1 --shallow-submodules \
-    https://github.com/akinomyoga/ble.sh.git ~/.local/share/blesh
-  make -C ~/.local/share/blesh install PREFIX=~/.local
-  ```
-  Or use the official installer from https://github.com/akinomyoga/ble.sh.
-- **WSL with Windows interop** for the clipboard (`clip.exe`, `powershell.exe`)
-  and for `explorer.exe` in `load-solution`. On plain Linux the clipboard falls
-  back to ble.sh's own detection (xclip/pbpaste/tmux); the Windows-specific
-  aliases (`clip`, `goto ...`) simply do not apply.
-- Optional: `fzf`, `oh-my-posh`, `podman`, .NET SDK — the init has guards, so
-  missing tools are skipped.
+- **WSL with Windows interop** for the clipboard (`clip.exe`, `powershell.exe`).
+  On plain Linux the clipboard falls back to ble.sh's own detection
+  (xclip/pbpaste/tmux), and `ble/edit/get-clipboard` is left untouched.
+- `bash` ≥ 4.4, `make`, `git`.
+- Optional: `fzf` (Ctrl+T/Ctrl+R via `contrib/integration`), `oh-my-posh`.
 
-## Local secrets (not in git)
+## What the overlay does
 
-`~/.bashrc` sources `~/.config/opencode/secrets.env` if it exists. Put API keys
-there (e.g. `export DEEPSEEK_API_KEY=...`, `chmod 600`). The file is
-intentionally absent from the repo.
-
-## What the ble.sh config does
-
-- `F2` toggles the prediction view **inline** (ghost text) / **list**
-  (vertical menu); the choice is remembered in
-  `~/.config/blesh/prediction-view`.
+- `F2` toggles the prediction view **inline** (ghost text) / **list** (vertical
+  menu); the choice is remembered in `~/.config/blesh/prediction-view`.
 - History lines are shown as candidates: lines **starting with** the typed text
-  first, otherwise lines **containing** it; the matching part is highlighted
-  (turquoise) and the rest is grey. The list is rebuilt on every keystroke from
-  a cached, deduplicated history (rebuilt only when `HISTCMD` changes).
+  first, otherwise lines **containing** it; the match is highlighted (turquoise),
+  the rest is grey. The list is rebuilt per keystroke from a cached,
+  deduplicated history (rebuilt only when `HISTCMD` changes).
 - `Tab` accepts / enters the menu and cycles; `Esc` closes the menu and
   otherwise discards the line; `Space` narrows the list.
 - PSReadLine (Windows mode) keys: `Ctrl+C` copy-selection-or-cancel,
-  `Ctrl+V`/`Shift+Insert` paste, `Ctrl+Z`/`Ctrl+Y` undo/redo,
-  `Ctrl+Space` menu complete, `Ctrl+Home`/`Ctrl+End` kill to start/end,
-  `Ctrl+Backspace`/`Ctrl+Delete` kill word. Every kill/copy also goes to the
+  `Ctrl+V` / `Shift+Insert` paste, `Ctrl+Z` / `Ctrl+Y` undo/redo,
+  `Ctrl+Space` menu complete, `Ctrl+Home` / `Ctrl+End` kill to start/end,
+  `Ctrl+Backspace` / `Ctrl+Delete` kill word. Every kill/copy also reaches the
   Windows clipboard (kill ring == clipboard), like PSReadLine.
 
 ## Known differences from PSReadLine
@@ -73,3 +60,13 @@ intentionally absent from the repo.
 - `Ctrl+Z` undoes one edit at a time (PSReadLine groups edits).
 - `F3/F8`, `Ctrl+]`, `Alt+a`, multi-line `Ctrl+Enter`/`Shift+Enter` are not
   reproduced.
+
+## Maintaining the ble.sh fork
+
+```bash
+cd blesh
+git remote add upstream https://github.com/akinomyoga/ble.sh   # once
+git fetch upstream && git merge upstream/master                # take upstream
+git push origin master                                         # to the fork
+cd .. && git add blesh && git commit -m "update ble.sh"
+```

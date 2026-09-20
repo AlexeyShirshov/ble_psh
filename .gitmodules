@@ -1,0 +1,3 @@
+[submodule "blesh"]
+	path = blesh
+	url = https://github.com/AlexeyShirshov/ble.sh
