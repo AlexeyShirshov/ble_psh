@@ -174,15 +174,29 @@ function ble/widget/my/prediction/self-insert {
 
 ble-bind -m emacs -f __defchar__ 'my/prediction/self-insert'
 
-# Esc closes the prediction list (like PSReadLine).
-# (decode_isolated_esc=esc above makes a lone ESC dispatch as the Esc key.)
+# Esc clears the current line in place, like PSReadLine's Windows mode (Esc =
+# RevertLine): the input is emptied but the cursor stays on the same prompt line,
+# no fresh prompt is printed.  (decode_isolated_esc=esc above makes a lone ESC
+# dispatch as C-[.)  ble.sh's own `discard-line` cannot be used because it calls
+# ble/widget/.newline, which prints a new prompt on the next line; this widget
+# returns the buffer to its initial (empty) state and repaints in place.
+#
+# This binding lives in the `emacs` keymap, so it is also the one that runs while
+# the list-view prediction list is auto-shown: that popup is only the prediction
+# list, not an interactive completion menu, and ble.sh keeps the keymap at
+# `emacs` while it is open.  The list is cleared as part of reverting the line.
+# The interactive completion menus (menu/menu_complete keymaps) keep their own
+# Esc = cancel binding, matching PSReadLine's MenuComplete, where Esc closes the
+# menu without reverting the line.
 function ble/widget/my/prediction/escape {
-  if [[ $_ble_complete_menu_active ]]; then
-    ble/complete/menu/clear
-    return 0
-  fi
-  # like PSReadLine, a bare Esc discards the current line
-  ble/widget/discard-line
+  ble/complete/menu/clear
+  ble-edit/content/clear-arg
+  # reset history navigation and drop the edit/undo state of the current line
+  ble/history/revert-edits
+  # empty the buffer, the point and the mark, then repaint in place (no newline)
+  ble/widget/.newline/clear-content
+  ble/textarea#invalidate
+  ble/textarea#render
 }
 
 ble-bind -m emacs -f 'C-[' 'my/prediction/escape'

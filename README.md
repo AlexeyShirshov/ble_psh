@@ -45,8 +45,9 @@ are missing, and symlinks `~/.blerc` (existing file is backed up).
   first, otherwise lines **containing** it; the match is highlighted (turquoise),
   the rest is grey. The list is rebuilt per keystroke from a cached,
   deduplicated history (rebuilt only when `HISTCMD` changes).
-- `Tab` accepts / enters the menu and cycles; `Esc` closes the menu and
-  otherwise discards the line; `Space` narrows the list; `Enter` accepts the
+- `Tab` accepts / enters the menu and cycles; `Esc` clears the current line in
+  place (`RevertLine`) without printing a new prompt, even while the list-view
+  prediction list is shown; `Space` narrows the list; `Enter` accepts the
   highlighted suggestion and runs the line in a single press.
 - PSReadLine (Windows mode) keys: `Ctrl+C` copy-selection-or-cancel,
   `Ctrl+V` / `Shift+Insert` paste, `Ctrl+Z` / `Ctrl+Y` undo/redo,
