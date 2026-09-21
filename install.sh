@@ -10,6 +10,12 @@ set -euo pipefail
 
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
+# 0. prerequisites
+for cmd in bash make git fzf; do
+  command -v "$cmd" >/dev/null 2>&1 ||
+    echo "warning: '$cmd' not found — install it (see README Requirements)" >&2
+done
+
 # 1. submodule (ble.sh fork)
 git -C "$repo" submodule update --init --recursive --depth 1
 
@@ -22,7 +28,7 @@ touch "$bashrc"
 if ! grep -q 'blesh/ble.sh' "$bashrc"; then
   {
     echo
-    echo '# ble.sh (overlay: ~/sources/dotfiles)'
+    echo '# ble.sh (overlay: ~/sources/ble_psh)'
     echo '[[ $- == *i* ]] && source -- "$HOME/.local/share/blesh/ble.sh" --attach=none'
   } >> "$bashrc"
 fi

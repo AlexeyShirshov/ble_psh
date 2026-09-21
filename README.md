@@ -20,8 +20,8 @@ single `blerc` file and uses public ble.sh APIs (`ble-bind`, `ble-face`,
 ## Install
 
 ```bash
-git clone --recurse-submodules https://github.com/AlexeyShirshov/dotfiles.git ~/sources/dotfiles
-~/sources/dotfiles/install.sh
+git clone --recurse-submodules https://github.com/AlexeyShirshov/ble_psh.git ~/sources/ble_psh
+~/sources/ble_psh/install.sh
 exec bash
 ```
 
@@ -35,7 +35,9 @@ are missing, and symlinks `~/.blerc` (existing file is backed up).
   On plain Linux the clipboard falls back to ble.sh's own detection
   (xclip/pbpaste/tmux), and `ble/edit/get-clipboard` is left untouched.
 - `bash` ≥ 4.4, `make`, `git`.
-- Optional: `fzf` (Ctrl+T/Ctrl+R via `contrib/integration`), `oh-my-posh`.
+- `fzf` — required: used by `contrib/integration` for Ctrl+T / Ctrl+R. Install
+  it with your package manager, e.g. `sudo apt install fzf`.
+- Optional: `oh-my-posh`.
 
 ## What the overlay does
 
