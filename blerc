@@ -78,6 +78,22 @@ function ble/widget/my/prediction/up {
 ble-bind -f down 'my/prediction/down'
 ble-bind -f up 'my/prediction/up'
 
+# Left accepts the highlighted prediction and returns to editing the line.  The
+# candidate is already inserted live into the line (complete_menu_complete_opts
+# defaults to insert-selection), so leaving the menu with `menu_complete/exit`
+# keeps it and rebuilds nothing.  This differs from Esc, which cancels (reverts
+# to the typed text), and from Enter, which also runs the line.  In the
+# one-per-line list `left` would otherwise be `menu/backward-column` (a no-op),
+# so there was no way to keep the selection except with a key that cancels it.
+# The cursor is also moved one column left, so `left` always keeps moving left.
+function ble/widget/my/prediction/left {
+  [[ $_ble_decode_keymap == menu_complete && $_ble_complete_menu_active ]] &&
+    ble/widget/menu_complete/exit
+  ble/widget/backward-char
+}
+
+ble-bind -m menu_complete -f left 'my/prediction/left'
+
 # Tab runs the usual (syntax/intellisense) completion in place, without opening
 # the vertical candidate list. `context=syntax` keeps ble.sh from reusing the
 # open history menu; the locally hidden menu makes `complete` insert into the

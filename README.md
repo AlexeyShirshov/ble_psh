@@ -49,8 +49,9 @@ are missing, and symlinks `~/.blerc` (existing file is backed up).
   deduplicated history (rebuilt only when `HISTCMD` changes).
 - `Tab` accepts / enters the menu and cycles; `Esc` clears the current line in
   place (`RevertLine`) without printing a new prompt, even while the list-view
-  prediction list is shown; `Space` narrows the list; `Enter` accepts the
-  highlighted suggestion and runs the line in a single press.
+  prediction list is shown; `Left` accepts the highlighted line out of the list
+  and drops straight back to editing it; `Space` narrows the list; `Enter`
+  accepts the highlighted suggestion and runs the line in a single press.
 - PSReadLine (Windows mode) keys: `Ctrl+C` copy-selection-or-cancel,
   `Ctrl+V` / `Shift+Insert` paste, `Ctrl+Z` / `Ctrl+Y` undo/redo,
   `Ctrl+Space` menu complete, `Ctrl+Home` / `Ctrl+End` kill to start/end,
