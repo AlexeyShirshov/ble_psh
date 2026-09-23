@@ -144,7 +144,7 @@ function ble/widget/my/prediction/delete-backward {
 }
 
 function ble/widget/my/prediction/delete-forward {
-  ble/widget/delete-char
+  ble/widget/delete-forward-char
   ble/widget/my/prediction/refresh
 }
 
